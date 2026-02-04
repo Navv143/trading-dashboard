@@ -3,122 +3,140 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import pytz
-from datetime import datetime, time
-import os
+from datetime import datetime, timedelta
+import requests
+from twelvedata import TDClient
+from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Monster F&O Scanner", layout="wide")
+st.set_page_config(page_title="Ultimate Monster Dashboard", layout="wide")
 IST = pytz.timezone('Asia/Kolkata')
+API_KEY = "8e3458e906524535a87fe7a3274135be"
 
-# 1. FULL F&O TICKER LIST (Approx 180 stocks)
+# 1. FULL F&O TICKER LIST
 FO_STOCKS = [
-    "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", "ADANIPORTS.NS",
-    "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS",
-    "ATUL.NS", "AUBANK.NS", "AUROPHARMA.MA", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS",
-    "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BATAINDIA.NS", "BEL.NS", "BERGEPAINT.NS",
-    "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", "BSOFT.NS", "BPCL.NS", "BRITANNIA.NS", "CANBK.NS",
-    "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS",
-    "CROMPTON.NS", "CUB.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS",
-    "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", "GAIL.NS",
-    "GLENMARK.NS", "GMRINFRA.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", "GUJGASLTD.NS",
-    "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS",
-    "HINDPETRO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFC.NS", "IDFCFIRSTB.NS", "IEX.NS",
-    "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS",
-    "IOC.NS", "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS",
-    "L&TFH.NS", "LT.NS", "LTIM.NS", "LTTS.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS",
-    "MARUTI.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTHERSON.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS",
-    "NATIONALUM.NS", "NAVINFLUOR.NS", "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS",
-    "PEL.NS", "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", "POLYCAB.NS", "POWERGRID.NS",
-    "PVRINOX.NS", "RECLTD.NS", "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS",
-    "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAMOTORS.NS",
-    "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TRENT.NS", "TVSMOTOR.NS", "ULTRACEMCO.NS",
-    "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZEEL.NS", "ZYDUSLIFE.NS"
-]
+    "ADANIENT.NS", "ADANIPORTS.NS", "BHEL.NS", "NMDC.NS", "BANKBARODA.NS", "PNB.NS", 
+    "SBIN.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "AXISBANK.NS", "TCS.NS", 
+    "INFY.NS", "TATAMOTORS.NS", "BHARTIARTL.NS", "COALINDIA.NS", "PFC.NS", "RECLTD.NS",
+    "CANBK.NS", "VEDL.NS", "JINDALSTEL.NS", "TATASTEEL.NS", "SAIL.NS", "BATAINDIA.NS",
+    "DLF.NS", "HAL.NS", "BEL.NS", "ITC.NS", "HINDALCO.NS", "BPCL.NS", "IOC.NS"
+] # Add more to this list as needed
 
-# --- APP START ---
+# --- AUTO REFRESH (60 SECONDS) ---
+st_autorefresh(interval=60 * 1000, key="monster_refresh")
+
 def get_ist_now():
     return datetime.now(IST)
 
-st.title("🚀 Monster F&O Sniper (AMD + Momentum)")
-st_time = st.empty()
+# --- TWELVE DATA ENGINE (GOLD & CRYPTO) ---
+def fetch_global_td(symbol):
+    try:
+        td = TDClient(apikey=API_KEY)
+        ts = td.time_series(symbol=symbol, interval="15min", outputsize=50)
+        df = ts.as_pandas()
+        return df
+    except:
+        return pd.DataFrame()
 
-# --- AUTO REFRESH ---
-from streamlit_autorefresh import st_autorefresh
-st_autorefresh(interval=60 * 1000, key="fnotracker")
+# --- APP LAYOUT ---
+st.title("🛡️ Ultimate Master Auto-Pilot Dashboard")
+st.write(f"Refreshed at: {get_ist_now().strftime('%H:%M:%S')} IST")
 
-# --- DATA ENGINE ---
+# --- GLOBAL MARKETS (GOLD & CRYPTO) ---
+st.header("🌍 Global AMD & Silver Bullet")
+col1, col2, col3 = st.columns(3)
+
+with col1: # GOLD
+    df_gold = fetch_global_td("XAU/USD")
+    if not df_gold.empty:
+        curr_g = df_gold['close'].iloc[0]
+        # Midnight Open (approx 5:30 AM IST)
+        m_open_g = df_gold.iloc[-1]['open'] 
+        man_l = df_gold['low'].min() < m_open_g
+        man_h = df_gold['high'].max() > m_open_g
+        
+        status = "Watching"
+        now = get_ist_now()
+        if now.hour == 19 or (now.hour == 20 and now.minute <= 30):
+            if man_l and curr_g > m_open_g: status = "🔥 GOLD NEWS SWEEP BUY"
+            elif man_h and curr_g < m_open_g: status = "🩸 GOLD NEWS SWEEP SELL"
+        
+        st.metric("GOLD (XAU/USD)", f"${curr_g}", status)
+        st.caption(f"AMD Target: Opposite Session Side")
+
+with col2: # BTC
+    df_btc = fetch_global_td("BTC/USD")
+    if not df_btc.empty:
+        curr_b = df_btc['close'].iloc[0]
+        m_open_b = df_btc.iloc[-1]['open']
+        status = "Scanning"
+        now = get_ist_now()
+        # 8:30 PM Silver Bullet & 9:00 PM Trend
+        if now.hour >= 20:
+            if curr_b > m_open_b: status = "🚀 SILVER BULLET BUY"
+            else: status = "💀 TREND CRASH"
+        
+        st.metric("BITCOIN", f"${round(curr_b, 2)}", status)
+
+with col3: # ETH
+    df_eth = fetch_global_td("ETH/USD")
+    if not df_eth.empty:
+        curr_e = df_eth['close'].iloc[0]
+        st.metric("ETHEREUM", f"${round(curr_e, 2)}", "Tracking")
+
+st.divider()
+
+# --- INDIAN MARKET (MONSTER F&O SCANNER) ---
+st.header("🇮🇳 Indian Market: 9:45 Sweep & 10:30 Monster")
+
 @st.cache_data(ttl=60)
-def fetch_all_data():
-    all_tickers = FO_STOCKS + ["^NSEI", "^NSEBANK", "BTC-USD", "GC=F"]
-    data = yf.download(all_tickers, period="2d", interval="15m", progress=False)
-    return data['Close'], data['Open'], data['High'], data['Low'], data['Volume']
+def fetch_indian_data():
+    tickers = [t for t in FO_STOCKS] + ["^NSEI", "^NSEBANK"]
+    data = yf.download(tickers, period="2d", interval="15m", progress=False)
+    return data
 
 try:
-    closes, opens, highs, lows, volumes = fetch_all_data()
-    now = get_ist_now()
-    st_time.write(f"Last Scan: {now.strftime('%H:%M:%S')} IST")
-
+    ind_data = fetch_indian_data()
+    closes = ind_data['Close']
+    opens = ind_data['Open']
+    highs = ind_data['High']
+    lows = ind_data['Low']
+    vols = ind_data['Volume']
+    
+    # Nifty Relative Strength
+    nifty_perf = ((closes['^NSEI'].iloc[-1] - opens['^NSEI'].iloc[0]) / opens['^NSEI'].iloc[0]) * 100
+    
     results = []
-
-    # Calculate Nifty Performance for Relative Strength
-    nifty_open = opens['^NSEI'].iloc[0]
-    nifty_curr = closes['^NSEI'].iloc[-1]
-    nifty_perf = ((nifty_curr - nifty_open) / nifty_open) * 100
-
-    for ticker in FO_STOCKS:
+    for t in FO_STOCKS:
         try:
-            curr_p = closes[ticker].iloc[-1]
-            m_open = opens[ticker].iloc[0] # 9:15 AM Open
-            vol_last = volumes[ticker].iloc[-1]
-            vol_avg = volumes[ticker].mean()
+            p_close = closes[t].iloc[-1]
+            p_open = opens[t].iloc[0]
+            orb_h = highs[t].iloc[0:2].max() # 9:15-9:45
+            orb_l = lows[t].iloc[0:2].min()
             
-            # Monster Logic Triggers
-            perf = ((curr_p - m_open) / m_open) * 100
-            rel_strength = perf - nifty_perf
+            p_vols = vols[t].iloc[-1]
+            avg_vols = vols[t].mean()
             
-            # ORB 30 Filter (9:15 - 9:45)
-            orb_h = highs[ticker].iloc[0:2].max()
+            # RS Calculation
+            stock_perf = ((p_close - p_open) / p_open) * 100
+            rs = stock_perf - nifty_perf
             
-            status = "Scanning"
-            if curr_p > orb_h and vol_last > vol_avg * 2.5 and rel_strength > 1.0:
-                status = "🔥 MONSTER BUY"
-            elif curr_p < m_open and vol_last > vol_avg * 2.5 and rel_strength < -1.0:
-                status = "🩸 CRASHING"
+            signal = "Watch"
+            # 9:45 Sweep Logic
+            if p_close > orb_h and lows[t].iloc[-1] < orb_l: signal = "🎯 BN SWEEP"
+            # 10:30 Monster Logic
+            elif p_close > orb_h and p_vols > avg_vols * 2.5 and rs > 1.2: signal = "🚀 MONSTER BUY"
+            elif p_close < orb_l and p_vols > avg_vols * 2.5 and rs < -1.2: signal = "💀 CRASHING"
             
-            if status != "Scanning":
-                results.append({
-                    "Symbol": ticker.replace(".NS", ""),
-                    "Price": round(curr_p, 2),
-                    "Rel Strength": f"{round(rel_strength, 2)}%",
-                    "Signal": status,
-                    "Time": now.strftime("%H:%M")
-                })
+            if signal != "Watch":
+                results.append({"Symbol": t, "Price": round(p_close, 2), "RS": f"{round(rs,2)}%", "Signal": signal})
         except:
             continue
 
-    # Display Monster Results
-    st.header("🎯 Active Monster Signals")
     if results:
-        df_res = pd.DataFrame(results)
-        st.dataframe(df_res.sort_values(by="Rel Strength", ascending=False), use_container_width=True)
+        st.table(pd.DataFrame(results))
     else:
-        st.write("No Monster moves detected yet. Waiting for Volume + Range Break.")
-
-    # Global Assets (BTC & GOLD)
-    st.divider()
-    st.header("🌍 Global AMD Signals")
-    col1, col2 = st.columns(2)
-    
-    with col1: # BTC
-        btc_p = closes['BTC-USD'].iloc[-1]
-        btc_o = opens['BTC-USD'].iloc[0]
-        st.metric("BTC-USD", round(btc_p, 2), f"{round(((btc_p-btc_o)/btc_o)*100, 2)}%")
-        if now.hour >= 20: st.success("Silver Bullet Window Active")
-
-    with col2: # GOLD
-        gold_p = closes['GC=F'].iloc[-1]
-        gold_o = opens['GC=F'].iloc[0]
-        st.metric("GOLD (XAU)", round(gold_p, 2), f"{round(((gold_p-gold_o)/gold_o)*100, 2)}%")
+        st.info("No active Monster signals. Waiting for 9:45 AM or 10:30 AM volume spikes.")
 
 except Exception as e:
-    st.error(f"Waiting for Market Data... {e}")
+    st.write("Initializing Market Data...")

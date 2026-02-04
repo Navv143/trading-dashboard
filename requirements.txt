@@ -4,3 +4,4 @@ pandas_ta
 twelvedata
 streamlit-autorefresh
 pytz
+requests

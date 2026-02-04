@@ -1,7 +1,6 @@
 streamlit
 yfinance
+pandas
 pandas_ta
-twelvedata
-streamlit-autorefresh
 pytz
-requests
+streamlit-autorefresh

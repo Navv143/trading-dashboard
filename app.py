@@ -3,131 +3,149 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import pytz
-from datetime import datetime, time
+from datetime import datetime
 import os
-from twelvedata import TDClient
 from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Master Auto-Pilot Dashboard", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="God-Mode Multi-Strategy Scanner", layout="wide", page_icon="🏦")
 IST = pytz.timezone('Asia/Kolkata')
-API_KEY = "8e3458e906524535a87fe7a3274135be"
-LOG_FILE = "signal_log.csv"
+LOG_FILE = "master_signal_log.csv"
 
-# --- AUTO REFRESH ---
-st_autorefresh(interval=60 * 1000, key="master_refresh")
+# AUTO REFRESH (Every 60 Seconds)
+st_autorefresh(interval=60 * 1000, key="godmode_refresh")
+
+# --- TICKER LIST (All 180+ F&O Stocks) ---
+ALL_FO = [
+    "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BATAINDIA.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUB.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", "GMRINFRA.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", "HINDPETRO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFC.NS", "IDFCFIRSTB.NS", "IEX.NS", "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", "L&TFH.NS", "LALPATHLAB.NS", "LAURUSLABS.NS", "LICHSGFIN.NS", "LT.NS", "LTIM.NS", "LTTS.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTHERSON.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "OFSS.NS", "ONGC.NS", "PAGEIND.NS", "PEL.NS", "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RBLBANK.NS", "RECLTD.NS", "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZEEL.NS", "ZYDUSLIFE.NS"
+]
 
 def get_ist_now():
     return datetime.now(IST)
 
-# --- LIVE PRICE ENGINE ---
-@st.cache_data(ttl=55)
-def get_live_indices():
-    indices = {
-        "Nifty 50": "^NSEI",
-        "Bank Nifty": "^NSEBANK",
-        "Bitcoin": "BTC-USD",
-        "Ethereum": "ETH-USD",
-        "Gold": "GC=F",
-        "S&P 500": "^GSPC",
-        "Nasdaq": "^IXIC"
-    }
-    data = yf.download(list(indices.values()), period="1d", interval="1m", progress=False)['Close']
-    res = {}
-    for name, ticker in indices.items():
-        try:
-            val = data[ticker].dropna().iloc[-1]
-            prev = data[ticker].dropna().iloc[0]
-            change = ((val - prev) / prev) * 100
-            res[name] = {"price": val, "change": change}
-        except: res[name] = {"price": 0, "change": 0}
-    return res
+# --- DATA DOWNLOADER ---
+@st.cache_data(ttl=60)
+def fetch_master_data():
+    all_tickers = ALL_FO + ["^NSEI", "^NSEBANK", "BTC-USD", "ETH-USD", "GC=F"]
+    data = yf.download(all_tickers, period="2d", interval="15m", progress=False)
+    return data
 
-# --- SIGNAL LOGGER ---
-def log_signal(asset, strategy, signal):
+# --- SIGNAL LOGGING ---
+def log_master_signal(asset, strategy, signal):
     if not os.path.isfile(LOG_FILE):
         pd.DataFrame(columns=["Time", "Asset", "Strategy", "Signal"]).to_csv(LOG_FILE, index=False)
     
-    if "🚀" in signal or "🎯" in signal or "🔥" in signal:
+    if any(emoji in signal for emoji in ["🚀", "🎯", "🔥", "💀"]):
         df = pd.read_csv(LOG_FILE)
         now_str = get_ist_now().strftime("%H:%M:%S")
-        new_row = {"Time": now_str, "Asset": asset, "Strategy": strategy, "Signal": signal}
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        df.to_csv(LOG_FILE, index=False)
+        # Log only if new
+        if not ((df['Asset'] == asset) & (df['Strategy'] == strategy)).tail(1).any():
+            new_row = {"Time": now_str, "Asset": asset, "Strategy": strategy, "Signal": signal}
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            df.to_csv(LOG_FILE, index=False)
 
-# --- HEADER: LIVE INDEX TICKER ---
-idx = get_live_indices()
-cols = st.columns(len(idx))
-for i, (name, d) in enumerate(idx.items()):
-    cols[i].metric(name, f"{d['price']:.2f}", f"{d['change']:.2f}%")
+# --- UI START ---
+st.title("🛡️ Institutional God-Mode Auto-Pilot")
+now = get_ist_now()
+st.caption(f"Server Time: {now.strftime('%H:%M:%S')} IST | All 180+ F&O Stocks Monitored")
 
-st.divider()
+# --- LIVE PRICE BAR ---
+try:
+    master_data = fetch_master_data()
+    closes = master_data['Close']
+    opens = master_data['Open']
+    highs = master_data['High']
+    lows = master_data['Low']
+    vols = master_data['Volume']
 
-# --- MAIN ENGINE ---
-def run_logic():
-    now = get_ist_now()
-    h, m = now.hour, now.minute
-    
-    # 1. INDIAN MARKET (9:45 Sweep & 10:30 Monster)
-    st.subheader("🇮🇳 Indian Market Sniper")
-    ind_tickers = ["^NSEBANK", "^NSEI", "RELIANCE.NS", "BHEL.NS", "ADANIENT.NS", "SBIN.NS", "NMDC.NS"]
-    df_ind = yf.download(ind_tickers, period="2d", interval="5m", progress=False)
-    
-    ind_res = []
-    for t in ind_tickers:
+    # --- TOP DASHBOARD (INDICES) ---
+    st.subheader("📊 Live Index Tracker")
+    idx_cols = st.columns(5)
+    indices = {"Nifty": "^NSEI", "Bank Nifty": "^NSEBANK", "Gold": "GC=F", "BTC": "BTC-USD", "ETH": "ETH-USD"}
+    for i, (name, tick) in enumerate(indices.items()):
+        curr = closes[tick].iloc[-1]
+        prev = closes[tick].iloc[0]
+        chg = ((curr - prev)/prev)*100
+        idx_cols[i].metric(name, f"{curr:.2f}", f"{chg:.2f}%")
+
+    st.divider()
+
+    # --- THE 6-STRATEGY SCANNER ENGINE ---
+    all_signals = []
+    nifty_perf = ((closes['^NSEI'].iloc[-1] - opens['^NSEI'].iloc[0])/opens['^NSEI'].iloc[0])*100
+
+    for t in ALL_FO:
         try:
-            closes = df_ind['Close'][t].dropna()
-            opens = df_ind['Open'][t].dropna()
-            highs = df_ind['High'][t].dropna()
-            lows = df_ind['Low'][t].dropna()
+            name = t.replace(".NS","")
+            cp = closes[t].iloc[-1]
+            op = opens[t].iloc[0] # 9:15 AM IST
+            v_last = vols[t].iloc[-1]
+            v_avg = vols[t].mean()
             
-            m_open = opens.iloc[0] # 9:15 Open
-            curr = closes.iloc[-1]
-            orb_h = highs.between_time('09:15', '09:45').max()
-            orb_l = lows.between_time('09:15', '09:45').min()
+            # ORB Range
+            orb_h = highs[t].iloc[0:2].max()
+            orb_l = lows[t].iloc[0:2].min()
             
-            status = "Scanning"
-            if t == "^NSEBANK" and h == 9 and m >= 45:
-                if curr > orb_h and lows.iloc[-1] < orb_l: status = "🎯 BN SWEEP BUY"
-            elif h >= 10 and m >= 30 and curr > orb_h:
-                status = "🚀 MONSTER BUY"
+            # Performance
+            perf = ((cp - op)/op)*100
+            rs = perf - nifty_perf
             
-            log_signal(t, "Momentum/Sweep", status)
-            ind_res.append({"Asset": t, "Price": curr, "Status": status})
-        except: continue
-    st.table(pd.DataFrame(ind_res))
+            signal = "Scanning"
+            strategy = "Momentum"
 
-    # 2. GLOBAL MARKET (AMD + Silver Bullet)
-    st.subheader("🌍 Global AMD & Crypto")
+            # 1. 9:45 AM Sweep Logic
+            if now.hour == 9 and now.minute >= 45:
+                if cp > orb_h and lows[t].iloc[-1] < orb_l:
+                    signal, strategy = "🎯 SWEEP BUY", "ORB-Sweep"
+            
+            # 2. 10:30 AM Monster (Loosened for more signals)
+            if cp > orb_h and v_last > v_avg * 1.5 and rs > 0.8:
+                signal, strategy = "🚀 MONSTER BUY", "Monster"
+            elif cp < orb_l and v_last > v_avg * 1.5 and rs < -0.8:
+                signal, strategy = "💀 CRASHING", "Monster"
+
+            # Log and Add
+            if signal != "Scanning":
+                log_master_signal(name, strategy, signal)
+                all_signals.append({"Asset": name, "Strategy": strategy, "Signal": signal, "RS": f"{rs:.2f}%", "Price": cp})
+        except: continue
+
+    # --- DISPLAY SIGNALS ---
+    st.subheader("🔥 Real-Time Multi-Strategy Signals")
+    if all_signals:
+        st.table(pd.DataFrame(all_signals).sort_values(by="RS", ascending=False))
+    else:
+        st.info("Searching 180+ stocks for specific footprints... (Signals typically peak at 9:45, 10:30, 13:15, 19:00 IST)")
+
+    # --- GLOBAL AMD & SILVER BULLET ---
+    st.divider()
+    st.subheader("🌍 Global AMD & Silver Bullet (BTC/Gold)")
     global_res = []
-    # Use TwelveData for Gold & Crypto (High Accuracy)
-    td = TDClient(apikey=API_KEY)
-    for sym, name in [("XAU/USD", "GOLD"), ("BTC/USD", "BTC"), ("ETH/USD", "ETH")]:
-        try:
-            ts = td.time_series(symbol=sym, interval="15min", outputsize=50).as_pandas()
-            m_open = ts['open'].iloc[-1] # Midnight Open
-            curr = ts['close'].iloc[0]
+    for t in ["BTC-USD", "GC=F"]:
+        cp = closes[t].iloc[-1]
+        m_open = opens[t].iloc[0] # 5:30 AM IST
+        h_range = highs[t].max()
+        l_range = lows[t].min()
+        
+        status = "Waiting"
+        # AMD Logic: Was there manipulation?
+        if t == "GC=F" and now.hour >= 19:
+            if l_range < m_open and cp > m_open: status = "🔥 AMD BULLISH"
+            elif h_range > m_open and cp < m_open: status = "🩸 AMD BEARISH"
+        
+        if "BTC" in t and now.hour >= 20:
+            status = "🚀 SILVER BULLET" if cp > m_open else "💀 TREND DOWN"
             
-            status = "Waiting"
-            # AMD Logic: Manipulation below midnight open
-            manipulated = ts['low'].min() < m_open
-            
-            if name == "GOLD" and h >= 19:
-                if manipulated and curr > m_open: status = "🔥 AMD NEWS BUY"
-            if name == "BTC" and (h == 20 and m >= 30 or h == 21):
-                status = "🚀 SILVER BULLET" if curr > m_open else "Scanning"
-                
-            log_signal(name, "AMD/Bullet", status)
-            global_res.append({"Asset": name, "Price": curr, "Midnight Open": m_open, "Status": status})
-        except: continue
+        global_res.append({"Asset": t, "Price": cp, "5:30 AM Open": m_open, "Signal": status})
     st.table(pd.DataFrame(global_res))
 
-run_logic()
+except Exception as e:
+    st.error(f"Waiting for market data streams... {e}")
 
-# --- SIDEBAR: LOGS ---
-st.sidebar.header("📜 Signal Logs")
+# --- SIDEBAR LOGS ---
+st.sidebar.header("📜 Signal Journal")
 if os.path.isfile(LOG_FILE):
-    st.sidebar.dataframe(pd.read_csv(LOG_FILE).tail(15))
-    if st.sidebar.button("Clear Logs"):
+    st.sidebar.dataframe(pd.read_csv(LOG_FILE).tail(30).sort_index(ascending=False), use_container_width=True)
+    if st.sidebar.button("Wipe Journal"):
         os.remove(LOG_FILE)
         st.rerun()

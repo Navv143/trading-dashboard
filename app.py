@@ -3,140 +3,132 @@ import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import pytz
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
 from twelvedata import TDClient
 from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Ultimate Monster Dashboard", layout="wide")
+st.set_page_config(page_title="Ultimate Monster Sniper", layout="wide")
 IST = pytz.timezone('Asia/Kolkata')
 API_KEY = "8e3458e906524535a87fe7a3274135be"
 
-# 1. FULL F&O TICKER LIST
+# REFINED F&O LIST (High Liquidity)
 FO_STOCKS = [
     "ADANIENT.NS", "ADANIPORTS.NS", "BHEL.NS", "NMDC.NS", "BANKBARODA.NS", "PNB.NS", 
-    "SBIN.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "AXISBANK.NS", "TCS.NS", 
-    "INFY.NS", "TATAMOTORS.NS", "BHARTIARTL.NS", "COALINDIA.NS", "PFC.NS", "RECLTD.NS",
-    "CANBK.NS", "VEDL.NS", "JINDALSTEL.NS", "TATASTEEL.NS", "SAIL.NS", "BATAINDIA.NS",
-    "DLF.NS", "HAL.NS", "BEL.NS", "ITC.NS", "HINDALCO.NS", "BPCL.NS", "IOC.NS"
-] # Add more to this list as needed
+    "SBIN.NS", "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TATAMOTORS.NS", "PFC.NS", 
+    "RECLTD.NS", "CANBK.NS", "VEDL.NS", "JINDALSTEL.NS", "TATASTEEL.NS", "SAIL.NS"
+]
 
-# --- AUTO REFRESH (60 SECONDS) ---
 st_autorefresh(interval=60 * 1000, key="monster_refresh")
 
 def get_ist_now():
     return datetime.now(IST)
 
-# --- TWELVE DATA ENGINE (GOLD & CRYPTO) ---
-def fetch_global_td(symbol):
+# --- TWELVE DATA FALLBACK SYSTEM ---
+def fetch_global_price(symbol, fallback_ticker):
     try:
         td = TDClient(apikey=API_KEY)
-        ts = td.time_series(symbol=symbol, interval="15min", outputsize=50)
+        ts = td.time_series(symbol=symbol, interval="15min", outputsize=1)
         df = ts.as_pandas()
-        return df
+        return df['close'].iloc[0], "TwelveData"
     except:
-        return pd.DataFrame()
+        try:
+            data = yf.download(fallback_ticker, period="1d", interval="15min", progress=False)
+            return data['Close'].iloc[-1], "YFinance"
+        except:
+            return 0, "Error"
 
-# --- APP LAYOUT ---
-st.title("🛡️ Ultimate Master Auto-Pilot Dashboard")
-st.write(f"Refreshed at: {get_ist_now().strftime('%H:%M:%S')} IST")
+# --- MAIN UI ---
+now = get_ist_now()
+st.title("🚀 Monster F&O Sniper (AMD + Momentum)")
+st.write(f"Last Scan: {now.strftime('%H:%M:%S')} IST")
 
-# --- GLOBAL MARKETS (GOLD & CRYPTO) ---
-st.header("🌍 Global AMD & Silver Bullet")
-col1, col2, col3 = st.columns(3)
+# MARKET STATUS CHECK
+market_open = False
+if now.weekday() < 5: # Mon-Fri
+    if (now.hour == 9 and now.minute >= 15) or (now.hour > 9 and now.hour < 15) or (now.hour == 15 and now.minute <= 30):
+        market_open = True
 
-with col1: # GOLD
-    df_gold = fetch_global_td("XAU/USD")
-    if not df_gold.empty:
-        curr_g = df_gold['close'].iloc[0]
-        # Midnight Open (approx 5:30 AM IST)
-        m_open_g = df_gold.iloc[-1]['open'] 
-        man_l = df_gold['low'].min() < m_open_g
-        man_h = df_gold['high'].max() > m_open_g
-        
-        status = "Watching"
-        now = get_ist_now()
-        if now.hour == 19 or (now.hour == 20 and now.minute <= 30):
-            if man_l and curr_g > m_open_g: status = "🔥 GOLD NEWS SWEEP BUY"
-            elif man_h and curr_g < m_open_g: status = "🩸 GOLD NEWS SWEEP SELL"
-        
-        st.metric("GOLD (XAU/USD)", f"${curr_g}", status)
-        st.caption(f"AMD Target: Opposite Session Side")
+if not market_open:
+    st.warning("🌙 Indian Market is CLOSED. Showing Final Results of the Day.")
+else:
+    st.success("🟢 Indian Market is OPEN.")
 
-with col2: # BTC
-    df_btc = fetch_global_td("BTC/USD")
-    if not df_btc.empty:
-        curr_b = df_btc['close'].iloc[0]
-        m_open_b = df_btc.iloc[-1]['open']
-        status = "Scanning"
-        now = get_ist_now()
-        # 8:30 PM Silver Bullet & 9:00 PM Trend
-        if now.hour >= 20:
-            if curr_b > m_open_b: status = "🚀 SILVER BULLET BUY"
-            else: status = "💀 TREND CRASH"
-        
-        st.metric("BITCOIN", f"${round(curr_b, 2)}", status)
+# --- GLOBAL SIGNALS ---
+st.header("🌍 Global Market Status")
+col1, col2 = st.columns(2)
 
-with col3: # ETH
-    df_eth = fetch_global_td("ETH/USD")
-    if not df_eth.empty:
-        curr_e = df_eth['close'].iloc[0]
-        st.metric("ETHEREUM", f"${round(curr_e, 2)}", "Tracking")
+with col1:
+    btc_price, source_b = fetch_global_price("BTC/USD", "BTC-USD")
+    st.metric("BITCOIN", f"${round(btc_price, 2)}", f"Source: {source_b}")
+
+with col2:
+    gold_price, source_g = fetch_global_price("XAU/USD", "GC=F")
+    if gold_price > 0:
+        st.metric("GOLD (XAU/USD)", f"${round(gold_price, 2)}", f"Source: {source_g}")
+    else:
+        st.metric("GOLD", "Loading...", "API Syncing")
 
 st.divider()
 
-# --- INDIAN MARKET (MONSTER F&O SCANNER) ---
-st.header("🇮🇳 Indian Market: 9:45 Sweep & 10:30 Monster")
+# --- INDIAN MARKET SCANNER ---
+st.header("🎯 Monster Potential (Today)")
 
 @st.cache_data(ttl=60)
-def fetch_indian_data():
-    tickers = [t for t in FO_STOCKS] + ["^NSEI", "^NSEBANK"]
-    data = yf.download(tickers, period="2d", interval="15m", progress=False)
+def fetch_indian_market():
+    # Download in bulk for speed
+    data = yf.download(FO_STOCKS + ["^NSEI"], period="1d", interval="15m", progress=False)
     return data
 
 try:
-    ind_data = fetch_indian_data()
-    closes = ind_data['Close']
-    opens = ind_data['Open']
-    highs = ind_data['High']
-    lows = ind_data['Low']
-    vols = ind_data['Volume']
+    df_raw = fetch_indian_market()
     
-    # Nifty Relative Strength
-    nifty_perf = ((closes['^NSEI'].iloc[-1] - opens['^NSEI'].iloc[0]) / opens['^NSEI'].iloc[0]) * 100
-    
-    results = []
-    for t in FO_STOCKS:
-        try:
-            p_close = closes[t].iloc[-1]
-            p_open = opens[t].iloc[0]
-            orb_h = highs[t].iloc[0:2].max() # 9:15-9:45
-            orb_l = lows[t].iloc[0:2].min()
-            
-            p_vols = vols[t].iloc[-1]
-            avg_vols = vols[t].mean()
-            
-            # RS Calculation
-            stock_perf = ((p_close - p_open) / p_open) * 100
-            rs = stock_perf - nifty_perf
-            
-            signal = "Watch"
-            # 9:45 Sweep Logic
-            if p_close > orb_h and lows[t].iloc[-1] < orb_l: signal = "🎯 BN SWEEP"
-            # 10:30 Monster Logic
-            elif p_close > orb_h and p_vols > avg_vols * 2.5 and rs > 1.2: signal = "🚀 MONSTER BUY"
-            elif p_close < orb_l and p_vols > avg_vols * 2.5 and rs < -1.2: signal = "💀 CRASHING"
-            
-            if signal != "Watch":
-                results.append({"Symbol": t, "Price": round(p_close, 2), "RS": f"{round(rs,2)}%", "Signal": signal})
-        except:
-            continue
-
-    if results:
-        st.table(pd.DataFrame(results))
+    # Check if we got data
+    if not df_raw.empty:
+        # Handling YFinance Multi-Index
+        close_df = df_raw['Close']
+        open_df = df_raw['Open']
+        high_df = df_raw['High']
+        low_df = df_raw['Low']
+        vol_df = df_raw['Volume']
+        
+        nifty_perf = ((close_df['^NSEI'].iloc[-1] - open_df['^NSEI'].iloc[0]) / open_df['^NSEI'].iloc[0]) * 100
+        
+        results = []
+        for t in FO_STOCKS:
+            try:
+                curr_p = close_df[t].iloc[-1]
+                m_open = open_df[t].iloc[0]
+                orb_h = high_df[t].iloc[0:3].max() # First 45 mins
+                vol_now = vol_df[t].iloc[-1]
+                vol_avg = vol_df[t].mean()
+                
+                perf = ((curr_p - m_open) / m_open) * 100
+                rs = perf - nifty_perf
+                
+                signal = "Normal"
+                if curr_p > orb_h and rs > 1.0:
+                    signal = "🚀 MONSTER BUY"
+                elif curr_p < m_open and rs < -1.0:
+                    signal = "💀 CRASHING"
+                
+                if signal != "Normal":
+                    results.append({
+                        "Stock": t.replace(".NS", ""),
+                        "Price": round(curr_p, 2),
+                        "Rel Strength": f"{round(rs, 2)}%",
+                        "Signal": signal
+                    })
+            except:
+                continue
+        
+        if results:
+            st.table(pd.DataFrame(results))
+        else:
+            st.info("No stocks met the 'Monster' criteria (RS > 1.0% + Price > ORB High) for today.")
     else:
-        st.info("No active Monster signals. Waiting for 9:45 AM or 10:30 AM volume spikes.")
+        st.error("Unable to fetch Indian market data. Please wait.")
 
 except Exception as e:
-    st.write("Initializing Market Data...")
+    st.error(f"Error: {e}")

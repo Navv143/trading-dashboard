@@ -1,0 +1,7 @@
+streamlit
+yfinance
+pandas_ta
+twelvedata
+streamlit-autorefresh
+pytz
+```[[2](https://www.google.com/url?sa=E&q=https%3A%2F%2Fvertexaisearch.cloud.google.com%2Fgrounding-api-redirect%2FAUZIYQHyMYWuc5kJt78RkPmFFud8CwojnRwgP1u6wjTj_mK0ZQbN03Xt6pArNDK2rj1UOFRSLnANhKw2uJT2g-ZQobfCI9XQqZu7SO3GADTjcIY7a0sF9wwFe0O9S1TlaPWd9zOM7wviN8rjNpKz)]
